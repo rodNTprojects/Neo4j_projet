@@ -169,6 +169,23 @@ Le script de chargement (fourni séparément) contient plusieurs étapes.
 2. Exécutez (Ctrl+Enter ou Cmd+Enter)
 3. Attendez la fin (peut prendre 5-10 minutes total)
 
+**Alternative : exécution avec cypher-shell (ligne de commande ou Docker)**
+
+Le script est prévu pour Neo4j Browser. Le préfixe `:auto` placé devant certaines requêtes n'est reconnu que par Neo4j Browser : avec cypher-shell, il faut le retirer avant l'exécution.
+
+- Linux / macOS :
+  ```bash
+  sed 's/^:auto //' script_chargement.cypher | cypher-shell -u neo4j -p <mot_de_passe>
+  ```
+- Windows (PowerShell) :
+  ```powershell
+  (Get-Content script_chargement.cypher) -replace '^:auto ', '' | cypher-shell -u neo4j -p <mot_de_passe>
+  ```
+- Docker (remplacez `<conteneur>` par le nom de votre conteneur Neo4j) :
+  ```bash
+  sed 's/^:auto //' script_chargement.cypher | docker exec -i <conteneur> cypher-shell -u neo4j -p <mot_de_passe>
+  ```
+
 **Progression attendue :**
 - Étapes 1-3 : < 10 secondes
 - Étapes 4-14 : 2-5 minutes (chargement des nœuds)
