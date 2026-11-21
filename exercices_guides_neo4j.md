@@ -334,7 +334,7 @@ RETURN c, g;
 
 ```cypher
 MATCH (c:Customer {customer_id: 'CUST_NEW_001'})
-SET c.zip_code_prefix = '01310'
+SET c.zip_code_prefix = 1310
 RETURN c;
 ```
 
@@ -359,7 +359,8 @@ RETURN c, o;
 MATCH (o:Order {order_id: 'ORD_NEW_001'})
 MATCH (p:Product {product_id: 'PROD_NEW_001'})
 CREATE (oi:OrderItem {
-  order_item_id: 'OI_NEW_001',
+  composite_id: 'ORD_NEW_001_1',
+  order_item_id: 1,
   price: 299.99,
   freight_value: 25.00
 })
@@ -433,9 +434,10 @@ LIMIT 10;
 ```cypher
 // Prix moyen et liste des catégories par client
 MATCH (c:Customer)-[:PLACED]->()-[:CONTAINS]->(oi:OrderItem)-[:OF_PRODUCT]->(p:Product)
+OPTIONAL MATCH (p)-[:BELONGS_TO]->(cat:Category)
 RETURN c.customer_id,
-       avg(oi.price) as avg_price,
-       collect(DISTINCT p.category_name) as categories
+       avg(oi.price) AS avg_price,
+       collect(DISTINCT cat.name_english) AS categories
 LIMIT 10;
 ```
 
@@ -489,6 +491,10 @@ RETURN c;
 ### 6.2 PROFILE - Mesurer les performances
 
 ```cypher
+// Supprimer l'index créé par le script de chargement, pour mesurer sans index
+DROP INDEX customer_state IF EXISTS;
+
+
 PROFILE
 MATCH (c:Customer)
 WHERE c.state = 'SP'
