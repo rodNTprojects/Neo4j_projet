@@ -1,13 +1,17 @@
 // ============================================================
-// SCRIPT OPTIMISÉ NEO4J 4.4+ - FICHIERS 10-100 Mo
+// SCRIPT DE CHARGEMENT NEO4J 5.x - FICHIERS 10-100 Mo
 // ============================================================
 // Utilise CALL { ... } IN TRANSACTIONS (syntaxe moderne)
 // PRÉREQUIS: Placer tous les fichiers CSV dans le dossier neo4j/import/
 // ============================================================
 // SCRIPT DE CHARGEMENT CORRIGÉ
 // ============================================================
+
+// ===== ÉTAPE 0: NETTOYAGE COMPLET =====
+// Supprime toutes les données existantes
 MATCH (n) DETACH DELETE n;
 
+// ===== ÉTAPE 1: SUPPRESSION DES CONTRAINTES EXISTANTES =====
 DROP CONSTRAINT customer_id_unique IF EXISTS;
 
 DROP CONSTRAINT product_id_unique IF EXISTS;
@@ -30,6 +34,7 @@ DROP CONSTRAINT geolocation_zip_unique IF EXISTS;
 
 DROP CONSTRAINT payment_composite_unique IF EXISTS;
 
+// ===== ÉTAPE 2: CRÉATION DES CONTRAINTES D'UNICITÉ =====
 CREATE CONSTRAINT customer_id_unique IF NOT EXISTS
 FOR (c:Customer) REQUIRE c.customer_id IS UNIQUE;
 
@@ -63,6 +68,7 @@ FOR (g:Geolocation) REQUIRE g.zip_code_prefix IS UNIQUE;
 CREATE CONSTRAINT payment_composite_unique IF NOT EXISTS
 FOR (pay:Payment) REQUIRE pay.composite_id IS UNIQUE;
 
+// ===== ÉTAPE 3: CRÉATION DES INDEX DE PERFORMANCE =====
 CREATE INDEX customer_state IF NOT EXISTS
 FOR (c:Customer) ON (c.state);
 
@@ -108,6 +114,7 @@ FOR (p:Payment) ON (p.order_id);
 CREATE INDEX closed_lead_seller IF NOT EXISTS
 FOR (cl:ClosedLead) ON (cl.seller_id);
 
+// ===== ÉTAPE 4: CHARGEMENT DES GÉOLOCALISATIONS =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///geolocation.csv' AS row
 CALL {
   WITH row
@@ -119,6 +126,7 @@ CALL {
     g.state = row.geolocation_state
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 5: CHARGEMENT DES CATÉGORIES =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///product_category_name_translation.csv' AS row
 CALL {
   WITH row
@@ -127,6 +135,7 @@ CALL {
     cat.name_english = row.product_category_name_english
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 6: CHARGEMENT DES CLIENTS =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///customers.csv' AS row
 CALL {
   WITH row
@@ -138,6 +147,7 @@ CALL {
     c.state = row.customer_state
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 7: CHARGEMENT DES VENDEURS =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///sellers.csv' AS row
 CALL {
   WITH row
@@ -148,6 +158,7 @@ CALL {
     s.state = row.seller_state
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 8: CHARGEMENT DES PRODUITS =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///products.csv' AS row
 CALL {
   WITH row
@@ -163,6 +174,7 @@ CALL {
     p.width_cm = toFloat(row.product_width_cm)
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 9: CHARGEMENT DES LEADS QUALIFIÉS =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///leads_qualified.csv' AS row
 CALL {
   WITH row
@@ -181,6 +193,7 @@ CALL {
     ql.origin = row.origin
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 10: CHARGEMENT DES LEADS CONVERTIS =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///leads_closed.csv' AS row
 CALL {
   WITH row
@@ -225,6 +238,7 @@ CALL {
     END
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 11: CHARGEMENT DES COMMANDES =====
 :auto LOAD CSV WITH HEADERS FROM 'file:///orders.csv' AS row
 CALL {
   WITH row
@@ -279,6 +293,8 @@ CALL {
     END
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 12: CHARGEMENT DES ARTICLES DE COMMANDE =====
+// Clé composite : order_id + '_' + order_item_id (order_item_id seul n'est pas unique)
 :auto LOAD CSV WITH HEADERS FROM 'file:///order_items.csv' AS row
 CALL {
   WITH row
@@ -301,6 +317,8 @@ CALL {
     oi.freight_value = toFloat(row.freight_value)
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 13: CHARGEMENT DES PAIEMENTS =====
+// Clé composite : order_id + '_' + payment_sequential
 :auto LOAD CSV WITH HEADERS FROM 'file:///order_payments.csv' AS row
 CALL {
   WITH row
@@ -313,6 +331,8 @@ CALL {
     pay.payment_value = toFloat(row.payment_value)
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 14: CHARGEMENT DES AVIS =====
+// Note: Si erreurs de parsing, nettoyez d'abord le CSV avec le script Python fourni
 :auto LOAD CSV WITH HEADERS FROM 'file:///order_reviews.csv' AS row
 CALL {
   WITH row
@@ -342,6 +362,8 @@ CALL {
     END
 } IN TRANSACTIONS OF 500 ROWS;
 
+// ===== ÉTAPE 15: RELATIONS - GÉOLOCALISATION =====
+// Clients -> Géolocalisation
 :auto CALL {
   MATCH (c:Customer)
   WHERE c.zip_code_prefix IS NOT NULL
@@ -352,6 +374,7 @@ CALL {
   MERGE (c)-[:LIVES_IN]->(g)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// Vendeurs -> Géolocalisation
 :auto CALL {
   MATCH (s:Seller)
   WHERE s.zip_code_prefix IS NOT NULL
@@ -362,6 +385,8 @@ CALL {
   MERGE (s)-[:LOCATED_IN]->(g)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// ===== ÉTAPE 16: RELATIONS - PRODUITS =====
+// Produits -> Catégories
 :auto CALL {
   MATCH (p:Product)
   WHERE p.category_name IS NOT NULL
@@ -372,6 +397,8 @@ CALL {
   MERGE (p)-[:BELONGS_TO]->(cat)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// ===== ÉTAPE 17: RELATIONS - COMMANDES =====
+// Clients -> Commandes
 :auto CALL {
   MATCH (o:Order)
   WHERE o.customer_id IS NOT NULL
@@ -382,6 +409,7 @@ CALL {
   MERGE (c)-[:PLACED]->(o)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// Commandes -> Articles
 :auto CALL {
   MATCH (oi:OrderItem)
   WHERE oi.order_id IS NOT NULL
@@ -392,6 +420,7 @@ CALL {
   MERGE (o)-[:CONTAINS]->(oi)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// Articles -> Produits
 :auto CALL {
   MATCH (oi:OrderItem)
   WHERE oi.product_id IS NOT NULL
@@ -402,6 +431,7 @@ CALL {
   MERGE (oi)-[:OF_PRODUCT]->(p)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// Vendeurs -> Articles
 :auto CALL {
   MATCH (oi:OrderItem)
   WHERE oi.seller_id IS NOT NULL
@@ -412,6 +442,8 @@ CALL {
   MERGE (s)-[:SOLD]->(oi)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// ===== ÉTAPE 18: RELATIONS - PAIEMENTS =====
+// Commandes -> Paiements
 :auto CALL {
   MATCH (pay:Payment)
   WHERE pay.order_id IS NOT NULL
@@ -422,6 +454,8 @@ CALL {
   MERGE (o)-[:PAID_BY]->(pay)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// ===== ÉTAPE 19: RELATIONS - AVIS =====
+// Avis -> Commandes
 :auto CALL {
   MATCH (r:Review)
   WHERE r.order_id IS NOT NULL
@@ -432,6 +466,7 @@ CALL {
   MERGE (r)-[:FOR_ORDER]->(o)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// Clients -> Avis
 :auto CALL {
   MATCH (c:Customer)-[:PLACED]->(o:Order)<-[:FOR_ORDER]-(r:Review)
   WHERE NOT EXISTS((c)-[:WROTE]->(r))
@@ -439,6 +474,7 @@ CALL {
   MERGE (c)-[:WROTE]->(r)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// Avis -> Produits
 :auto CALL {
   MATCH (r:Review)-[:FOR_ORDER]->(o:Order)-[:CONTAINS]->(oi:OrderItem)-[:OF_PRODUCT]->(p:Product)
   WHERE NOT EXISTS((r)-[:ABOUT]->(p))
@@ -446,6 +482,8 @@ CALL {
   MERGE (r)-[:ABOUT]->(p)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// ===== ÉTAPE 20: RELATIONS - LEADS =====
+// Leads qualifiés -> Leads convertis
 :auto CALL {
   MATCH (ql:QualifiedLead)
   WHERE NOT EXISTS((ql)-[:CONVERTED_TO]->())
@@ -455,6 +493,7 @@ CALL {
   MERGE (ql)-[:CONVERTED_TO]->(cl)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// Leads convertis -> Vendeurs
 :auto CALL {
   MATCH (cl:ClosedLead)
   WHERE cl.seller_id IS NOT NULL
@@ -465,6 +504,8 @@ CALL {
   MERGE (cl)-[:BECAME]->(s)
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// ===== ÉTAPE 21: NETTOYAGE DES PROPRIÉTÉS REDONDANTES =====
+// Ces propriétés ont servi à créer les relations ; elles sont maintenant inutiles
 :auto CALL {
   MATCH (o:Order) 
   WHERE o.customer_id IS NOT NULL 
@@ -521,10 +562,13 @@ CALL {
   REMOVE p.category_name
 } IN TRANSACTIONS OF 1000 ROWS;
 
+// ===== ÉTAPE 22: VÉRIFICATION =====
+// Nombre de nœuds par type
 MATCH (n)
 RETURN labels(n)[0] as node_type, COUNT(n) as count
 ORDER BY count DESC;
 
+// Nombre de relations par type
 MATCH ()-[r]->()
 RETURN type(r) as relationship_type, COUNT(r) as count
 ORDER BY count DESC;
